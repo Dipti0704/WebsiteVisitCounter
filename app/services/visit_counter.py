@@ -1,46 +1,37 @@
-from typing import Dict, List, Any
-import asyncio
-from datetime import datetime
 from ..core.redis_manager import RedisManager
 
-
 class VisitCounterService:
-    """Service to manage visit counts without using Redis"""
-    
-    visit_counts: Dict[str, int] = {}
-    locks_per_page: Dict[str, asyncio.Lock] = {}  
-     
-    async def get_lock(self, page_id: str) -> asyncio.Lock:
-        """Retrieve or create a lock for a specific page_id."""
-        if page_id not in self.locks_per_page:  
-            self.locks_per_page[page_id] = asyncio.Lock()  
-        return self.locks_per_page[page_id]
+    """Service to manage visit counts using Redis"""
+
+    def __init__(self):
+        """Initialize with a RedisManager instance"""
+        self.redis_manager =  RedisManager()  # Allow dependency injection
 
     async def increment_visit(self, page_id: str) -> None:
         """
-        Increment visit count for a page.
+        Increment visit count for a page in Redis.
         
         Args:
-            page_id: Unique identifier for the page
+            page_id: Unique identifier for the page.
         """
-        lock = await self.get_lock(page_id)  
-        async with lock:  
-            if page_id in self.visit_counts:
-                self.visit_counts[page_id] += 1
-            else:
-                self.visit_counts[page_id] = 1
+        try:
+            await self.redis_manager.increment(f"visits:{page_id}")  # ✅ Synchronous Redis
+        except Exception as e:
+            print(f"Error incrementing visit count for {page_id}: {e}")
 
     async def get_visit_count(self, page_id: str) -> int:
         """
-        Get current visit count for a page.
+        Get visit count for a page from Redis.
         
         Args:
-            page_id: Unique identifier for the page
+            page_id: Unique identifier for the page.
             
         Returns:
-            Current visit count (default 0 if not found)
+            Visit count (default 0 on failure).
         """
-        lock = await self.get_lock(page_id)  
-        async with lock:  
-            return self.visit_counts.get(page_id, 0)
-        
+        try:
+            count = await self.redis_manager.get(f"visits:{page_id}")
+            return count if count is not None else 0  # ✅ Synchronous Redis
+        except Exception as e:
+            print(f"Error retrieving visit count for {page_id}: {e}")
+            return 0
